@@ -2,12 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Search, UserPlus, Filter, Mail, Phone, ExternalLink, Database, Globe } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { Search, Mail, ExternalLink, Database, Globe, Loader2, AlertCircle } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 export default function CandidatosPage() {
     const [candidates, setCandidates] = useState<any[]>([])
+    const [externalResults, setExternalResults] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
+    const [searchingExternal, setSearchingExternal] = useState(false)
     const [searchTerm, setSearchTerm] = useState('')
     const supabase = createClient()
 
@@ -26,7 +28,32 @@ export default function CandidatosPage() {
         setLoading(false)
     }
 
-    const filteredCandidates = candidates.filter(c =>
+    async function handleUnifiedSearch() {
+        if (!searchTerm.trim()) return
+
+        setSearchingExternal(true)
+        setExternalResults([])
+
+        try {
+            // Buscamos en ambos portales simultáneamente a través de nuestra API proxy
+            const [resEmpleos, resMiFuturo] = await Promise.all([
+                fetch(`/api/external-search?q=${encodeURIComponent(searchTerm)}&site=empleos`).then(r => r.json()),
+                fetch(`/api/external-search?q=${encodeURIComponent(searchTerm)}&site=mifuturo`).then(r => r.json())
+            ])
+
+            let combined: any[] = []
+            if (resEmpleos.success) combined = [...combined, ...resEmpleos.data]
+            if (resMiFuturo.success) combined = [...combined, ...resMiFuturo.data]
+
+            setExternalResults(combined)
+        } catch (error) {
+            console.error('Error en búsqueda externa:', error)
+        } finally {
+            setSearchingExternal(false)
+        }
+    }
+
+    const filteredInternal = candidates.filter(c =>
         c.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.position_detected?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.skills?.some((s: string) => s.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -36,14 +63,8 @@ export default function CandidatosPage() {
         <div className="p-8 space-y-8 max-w-7xl mx-auto">
             <header className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-bold gradient-text">Base de Candidatos</h1>
-                    <p className="text-gray-400 mt-1">Gestión unificada de talento interno y externo.</p>
-                </div>
-                <div className="flex gap-3">
-                    <button className="px-4 py-2 bg-white/5 rounded-xl border border-white/10 text-sm font-medium hover:bg-white/10 transition-all flex items-center gap-2">
-                        <Database className="w-4 h-4 text-indigo-400" />
-                        Importar CSV/PDF
-                    </button>
+                    <h1 className="text-3xl font-bold gradient-text">Búsqueda Unificada de Talento</h1>
+                    <p className="text-gray-400 mt-1">Consulta base interna y portales externos en un solo lugar.</p>
                 </div>
             </header>
 
@@ -54,88 +75,105 @@ export default function CandidatosPage() {
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
                         <input
                             type="text"
-                            placeholder="Búsqueda Inteligente: 'Frontend React con 3 años de experiencia'..."
+                            placeholder="Escribe un puesto o habilidad para buscar en toda la red..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleUnifiedSearch()}
                             className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all"
                         />
                     </div>
-                    <button className="btn-primary px-8">Buscar</button>
-                </div>
-                <div className="flex gap-4 text-xs text-gray-500 items-center">
-                    <span>Fuentes activas:</span>
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded-md border border-emerald-500/20">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        Base Interna
-                    </div>
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 text-blue-400 rounded-md border border-blue-500/20">
-                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                        LinkedIn (API)
-                    </div>
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-gray-500/10 text-gray-500 rounded-md border border-gray-500/20 grayscale">
-                        Aldaba
-                    </div>
+                    <button
+                        onClick={handleUnifiedSearch}
+                        disabled={searchingExternal}
+                        className="btn-primary px-8 flex items-center gap-2"
+                    >
+                        {searchingExternal ? <Loader2 className="w-5 h-5 animate-spin" /> : <Globe className="w-5 h-5" />}
+                        <span>Búsqueda Global</span>
+                    </button>
                 </div>
             </div>
 
-            {/* Candidates List/Table */}
-            <div className="glass-morphism overflow-hidden">
-                <table className="w-full text-left">
-                    <thead>
-                        <tr className="border-b border-white/5 bg-white/[0.02]">
-                            <th className="p-4 text-sm font-semibold text-gray-400">Candidato</th>
-                            <th className="p-4 text-sm font-semibold text-gray-400">Puesto / Perfil</th>
-                            <th className="p-4 text-sm font-semibold text-gray-400">Fuente</th>
-                            <th className="p-4 text-sm font-semibold text-gray-400">Habilidades</th>
-                            <th className="p-4 text-sm font-semibold text-gray-400 text-right">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                        {loading ? (
-                            <tr><td colSpan={5} className="p-12 text-center text-gray-500">Cargando talento...</td></tr>
-                        ) : filteredCandidates.length === 0 ? (
-                            <tr><td colSpan={5} className="p-12 text-center text-gray-500">No se encontraron candidatos.</td></tr>
-                        ) : (
-                            filteredCandidates.map((c) => (
-                                <tr key={c.id} className="hover:bg-white/[0.02] transition-colors group">
-                                    <td className="p-4">
-                                        <div className="font-bold text-white group-hover:text-indigo-400 transition-colors">{c.full_name}</div>
-                                        <div className="text-xs text-gray-500 flex items-center gap-2 mt-1">
-                                            <Mail className="w-3 h-3" /> {c.email}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Resultados Internos */}
+                <section className="space-y-4">
+                    <h2 className="text-xl font-semibold flex items-center gap-2">
+                        <Database className="w-5 h-5 text-indigo-400" />
+                        Base Manahire
+                    </h2>
+                    <div className="glass-morphism overflow-hidden">
+                        <div className="max-h-[500px] overflow-y-auto">
+                            {loading ? (
+                                <div className="p-8 text-center text-gray-500">Cargando base de datos...</div>
+                            ) : filteredInternal.length === 0 ? (
+                                <div className="p-8 text-center text-gray-500">No hay coincidencias internas.</div>
+                            ) : (
+                                filteredInternal.map((c) => (
+                                    <div key={c.id} className="p-4 border-b border-white/5 hover:bg-white/5 transition-all group">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <h3 className="font-bold text-white group-hover:text-indigo-400">{c.full_name}</h3>
+                                                <p className="text-xs text-indigo-300/70 uppercase tracking-tighter">{c.position_detected}</p>
+                                            </div>
+                                            <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/20">INTERNO</span>
                                         </div>
-                                    </td>
-                                    <td className="p-4 text-sm text-gray-300">
-                                        {c.position_detected || 'No detectado'}
-                                        <div className="text-[10px] text-gray-500 mt-1">{c.experience_years ? `${c.experience_years} años de exp.` : 'Exp. no especificada'}</div>
-                                    </td>
-                                    <td className="p-4">
-                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${c.source === 'LinkedIn' ? 'bg-blue-500/10 text-blue-400' :
-                                                c.source === 'Aldaba' ? 'bg-red-500/10 text-red-400' :
-                                                    'bg-indigo-500/10 text-indigo-400'
-                                            }`}>
-                                            {c.source}
-                                        </span>
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex flex-wrap gap-1">
+                                        <div className="mt-3 flex gap-2">
                                             {c.skills?.slice(0, 3).map((s: string, i: number) => (
-                                                <span key={i} className="px-1.5 py-0.5 bg-white/5 border border-white/10 rounded text-[10px] text-gray-400">
-                                                    {s}
-                                                </span>
+                                                <span key={i} className="text-[10px] bg-white/5 px-2 py-0.5 rounded text-gray-400">{s}</span>
                                             ))}
-                                            {c.skills?.length > 3 && <span className="text-[10px] text-gray-500">+{c.skills.length - 3}</span>}
                                         </div>
-                                    </td>
-                                    <td className="p-4 text-right">
-                                        <button className="p-2 hover:bg-white/5 rounded-lg text-gray-400 hover:text-white transition-all">
-                                            <ExternalLink className="w-4 h-4" />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </section>
+
+                {/* Resultados Externos */}
+                <section className="space-y-4">
+                    <h2 className="text-xl font-semibold flex items-center gap-2">
+                        <Globe className="w-5 h-5 text-blue-400" />
+                        Portales Externos
+                    </h2>
+                    <div className="glass-morphism overflow-hidden">
+                        <div className="max-h-[500px] overflow-y-auto">
+                            {searchingExternal ? (
+                                <div className="p-12 flex flex-col items-center gap-3 text-gray-500">
+                                    <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                                    <p className="text-sm">Rastreando Empleos.net y Mi Futuro Empleo...</p>
+                                </div>
+                            ) : externalResults.length === 0 ? (
+                                <div className="p-12 text-center text-gray-500">
+                                    <AlertCircle className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                                    <p className="text-sm">Inicia una búsqueda global para ver resultados externos.</p>
+                                </div>
+                            ) : (
+                                externalResults.map((res, i) => (
+                                    <div key={i} className="p-4 border-b border-white/5 hover:bg-white/5 transition-all group">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex-1 pr-4">
+                                                <h3 className="font-bold text-white text-sm line-clamp-1 group-hover:text-blue-400">{res.title}</h3>
+                                                <p className="text-xs text-gray-400 mt-1">{res.company}</p>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-2">
+                                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${res.source === 'Empleos.net' ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                                    }`}>
+                                                    {res.source.toUpperCase()}
+                                                </span>
+                                                <a
+                                                    href={res.link}
+                                                    target="_blank"
+                                                    className="p-1.5 bg-white/5 rounded-lg text-gray-400 hover:text-white hover:bg-indigo-500 transition-all"
+                                                >
+                                                    <ExternalLink className="w-3.5 h-3.5" />
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
     )
