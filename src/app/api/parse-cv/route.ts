@@ -15,15 +15,24 @@ export async function POST(request: Request) {
         const text = data.text
 
         // Intelligent Extraction (Basic Heuristics/Regex)
-        const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
-        const phoneRegex = /(\+?\d{1,3}[\s-]?)?\(?\d{3}\)?[\s-]?\d{3}[\s-]?\d{4}/
+        // Email más permisivo
+        const emailRegex = /[\w.-]+@[a-zA-Z\d.-]+\.[a-zA-Z]{2,}/;
+        // Teléfono más permisivo (acepta formatos como 15-1234-5678, +1 809 555 5555, etc)
+        const phoneRegex = /(\+?\d{1,4}[\s-]?)?(\(?\d{2,4}\)?[\s-]?)?\d{3,4}[\s-]?\d{3,4}/;
 
         const emailMatch = text.match(emailRegex)
         const phoneMatch = text.match(phoneRegex)
 
-        // Try to guess Name (First line usually)
-        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2)
-        const guessedName = lines[0] || 'Candidato Desconocido'
+        // Limpiar el texto de excesivos saltos de línea y espacios
+        const cleanText = text.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+
+        console.log("--- TEXTO EXTRAÍDO DEL PDF ---");
+        console.log(cleanText.substring(0, 500) + "..."); // Solo logear los primeros 500 caracteres para debug
+        console.log("------------------------------");
+
+        // Try to guess Name (First line usually, or finding capitalized words)
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2 && !l.includes('@') && !l.match(/\d/))
+        const guessedName = lines.length > 0 ? lines[0] : 'Candidato Desconocido'
 
         // Simple Skill Extraction
         const keywords = ['React', 'Node', 'Python', 'Java', 'SQL', 'Docker', 'AWS', 'Figma', 'UI/UX', 'Excel', 'Ventas']
